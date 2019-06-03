@@ -60,6 +60,7 @@ void js0n_init(status_t *s, const char *json, size_t jlen, size_t offset)
 	s->end = json + jlen;
 	s->go = 0;
 	s->depth = 0;
+	s->check_utf8 = 0;
 }
 
 // this makes a single pass across the json bytes, using each byte as an index into a jump table to build an index and transition state
@@ -68,6 +69,7 @@ const char *js0n_run(status_t *s, const char *key, size_t klen, size_t *vlen)
 	const char *val = 0;
 	int depth = s->depth;
 	size_t index = 1;
+	int utf8_remain = 0;
 	static void *gostruct[] =
 		{
 			[0 ... 255] = &&l_bad,
@@ -100,12 +102,29 @@ const char *js0n_run(status_t *s, const char *key, size_t klen, size_t *vlen)
 			['}'] = &&l_unbare,
 			[':'] = &&l_unbare,
 			[127 ... 255] = &&l_bad};
-	static void *gostring[] =
+	static void *gostring_[] =
 		{
 			[0 ... 127] = &&l_loop,
 			['\\'] = &&l_esc,
 			['"'] = &&l_qdown,
 			[128 ... 255] = &&l_loop};
+	static void *gostring_utf8[] =
+		{
+			[0 ... 31] = &&l_bad,
+			[127] = &&l_bad,
+			[32 ... 126] = &&l_loop,
+			['\\'] = &&l_esc,
+			['"'] = &&l_qdown,
+			[128 ... 191] = &&l_bad,
+			[192 ... 223] = &&l_utf8_2,
+			[224 ... 239] = &&l_utf8_3,
+			[240 ... 247] = &&l_utf8_4,
+			[248 ... 255] = &&l_bad};
+	static void *goutf8_continue[] =
+		{
+			[0 ... 127] = &&l_bad,
+			[128 ... 191] = &&l_utf_continue,
+			[192 ... 255] = &&l_bad};
 	static void *goesc[] =
 		{
 			[0 ... 255] = &&l_bad,
@@ -118,6 +137,7 @@ const char *js0n_run(status_t *s, const char *key, size_t klen, size_t *vlen)
 			['r'] = &&l_unesc,
 			['t'] = &&l_unesc,
 			['u'] = &&l_unesc};
+	void **gostring = s->check_utf8 ? gostring_utf8 : gostring_;
 	void **go = s->go;
 	if (!go)
 	{
@@ -199,6 +219,25 @@ l_unbare:
 	CAP(-1);
 	go = gostruct;
 	goto *go[(unsigned char)*s->cur];
+l_utf8_2:
+	go = goutf8_continue;
+	utf8_remain = 1;
+	goto l_loop;
+
+l_utf8_3:
+	go = goutf8_continue;
+	utf8_remain = 2;
+	goto l_loop;
+
+l_utf8_4:
+	go = goutf8_continue;
+	utf8_remain = 3;
+	goto l_loop;
+
+l_utf_continue:
+	if (!--utf8_remain)
+		go = gostring;
+	goto l_loop;
 }
 
 #if defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 6))

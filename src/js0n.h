@@ -15,6 +15,7 @@ extern "C"
 	{
 		const char *json;
 		size_t jlen;
+		int check_utf8;
 
 		const char *cur, *end, *start;
 		void **go;

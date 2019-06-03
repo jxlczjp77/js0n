@@ -48,6 +48,13 @@ static int lreset(lua_State *L)
     return 0;
 }
 
+static int lcheck_utf8(lua_State *L)
+{
+    status_t *s = (status_t *)luaL_checkudata(L, 1, "js0n_mt");
+    s->check_utf8 = lua_toboolean(L, 2);
+    return 0;
+}
+
 static int lrun(lua_State *L)
 {
     const char *key;
@@ -73,7 +80,8 @@ static int lrun(lua_State *L)
     else
     {
         lua_pushnil(L);
-        return 1;
+        lua_pushinteger(L, vlen);
+        return 2;
     }
 }
 
@@ -83,6 +91,7 @@ static void js0n_meta(lua_State *L)
     {
         luaL_Reg l[] = {
             {"reset", lreset},
+            {"check_utf8", lcheck_utf8},
             {NULL, NULL},
         };
         luaL_newlib(L, l);
